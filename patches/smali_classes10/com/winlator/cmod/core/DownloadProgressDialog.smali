@@ -106,6 +106,17 @@
 
     invoke-virtual {v0, v2}, Landroid/view/Window;->setBackgroundDrawable(Landroid/graphics/drawable/Drawable;)V
 
+    .line 36
+    invoke-virtual {v0}, Landroid/view/Window;->getAttributes()Landroid/view/WindowManager$LayoutParams;
+
+    move-result-object v2
+
+    const/4 v3, 0x4
+
+    iput v3, v2, Landroid/view/WindowManager$LayoutParams;->screenOrientation:I
+
+    invoke-virtual {v0, v2}, Landroid/view/Window;->setAttributes(Landroid/view/WindowManager$LayoutParams;)V
+
     :cond_1
     return-void
 .end method
