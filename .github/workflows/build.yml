@@ -48,8 +48,10 @@ jobs:
           # public.xml must be merged, not replaced, to preserve all existing pinned IDs
           cp -r patches/smali_classes8 apktool_out/
           cp -r patches/smali_classes2 apktool_out/
+          cp -r patches/smali_classes10 apktool_out/
           cp patches/AndroidManifest.xml apktool_out/AndroidManifest.xml
           cp patches/res/menu/main_menu.xml apktool_out/res/menu/main_menu.xml
+          cp patches/res/layout/download_progress_dialog.xml apktool_out/res/layout/download_progress_dialog.xml
           # Inject our 3 new IDs into the existing public.xml (before </resources>)
           sed -i 's|</resources>|    <public type="id" name="main_menu_gog" id="0x7f0903a6" />\n    <public type="id" name="main_menu_epic" id="0x7f0903a7" />\n    <public type="id" name="main_menu_amazon" id="0x7f0903a8" />\n</resources>|' \
             apktool_out/res/values/public.xml
