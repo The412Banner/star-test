@@ -25,7 +25,9 @@
 | `.github/workflows/build.yml` — full CI pipeline | ✅ Done | javac + d8 → classes17.dex inject |
 | First CI build v1 | ❌ Failed | ab_*.png pseudo-PNG issue (same as Ludashi-plus) |
 | Fix: ab_*.png strip + re-inject in build.yml | ✅ Done | 117 files, animated_background.xml |
-| First CI build v2 | ⏳ Pending | Tag v1.0.0-pre (retag) |
+| Fix: contents:write permission in build.yml | ✅ Done | GITHUB_TOKEN defaulted to read-only |
+| First CI build v2 | ❌ Failed | Missing permissions:contents:write |
+| CI build v3 | ✅ CI ✅ | Run `24295336304` — all steps green |
 | Functional test — GOG | ⏳ Pending | |
 | Functional test — Epic | ⏳ Pending | |
 | Functional test — Amazon | ⏳ Pending | |
@@ -545,7 +547,9 @@ jobs:
 
 8. **ab_*.png are not real PNGs:** Star has 117 `ab_*.png` animation frames and `animated_background.xml` in `res/drawable/`. These are binary animation data — aapt2 rejects them with "failed to read PNG signature". Fix: delete them before `apktool b`, strip their `public.xml` entries, then re-inject the originals from the base APK via `unzip`+`zip` after rebuild. Identical to Ludashi-plus fix.
 
-9. **screenOrientation:** Use `fullSensor` on all 9 store activities for auto-rotate support. Some REF4IK devices had lock issues with `sensorLandscape` alone on store Activities.
+9. **GITHUB_TOKEN needs `permissions: contents: write`:** By default Actions tokens are read-only. Without `permissions: contents: write` in the job, `gh release create` fails with a 403. Add it explicitly to the job block.
+
+10. **screenOrientation:** Use `fullSensor` on all 9 store activities for auto-rotate support. Some REF4IK devices had lock issues with `sensorLandscape` alone on store Activities.
 
 ---
 
