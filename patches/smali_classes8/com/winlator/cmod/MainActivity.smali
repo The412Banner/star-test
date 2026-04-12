@@ -1355,61 +1355,58 @@
     invoke-virtual {v3, v11}, Lcom/google/android/material/navigation/NavigationView;->setCheckedItem(I)V
 
     .line 147
-    invoke-direct {p0}, Lcom/winlator/cmod/MainActivity;->requestAppPermissions()Z
-
-    move-result v5
-
-    if-nez v5, :cond_7
-
-    .line 148
     invoke-static {p0}, Lcom/winlator/cmod/xenvironment/ImageFsInstaller;->installIfNeeded(Lcom/winlator/cmod/MainActivity;)V
 
-    .line 151
-    :cond_7
-    sget v5, Landroid/os/Build$VERSION;->SDK_INT:I
+    .end local v10    # "selectedMenuItemId":I
+    .end local v11    # "menuItemId":I
+    return-void
+.end method
 
-    const/16 v12, 0x1e
+.method public doPermissionsFlow()V
+    .locals 3
 
-    if-lt v5, v12, :cond_8
+    invoke-direct {p0}, Lcom/winlator/cmod/MainActivity;->requestAppPermissions()Z
+
+    sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
+
+    const/16 v1, 0x1e
+
+    if-lt v0, v1, :cond_0
 
     invoke-static {}, Landroid/os/Environment;->isExternalStorageManager()Z
 
-    move-result v5
+    move-result v0
 
-    if-nez v5, :cond_8
+    if-nez v0, :cond_0
 
-    .line 152
     invoke-direct {p0}, Lcom/winlator/cmod/MainActivity;->showAllFilesAccessDialog()V
 
-    .line 155
-    :cond_8
-    sget v5, Landroid/os/Build$VERSION;->SDK_INT:I
+    :cond_0
+    sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
 
-    const/16 v12, 0x21
+    const/16 v1, 0x21
 
-    if-lt v5, v12, :cond_9
+    if-lt v0, v1, :cond_1
 
-    .line 156
-    const-string v5, "android.permission.POST_NOTIFICATIONS"
+    const-string v0, "android.permission.POST_NOTIFICATIONS"
 
-    invoke-static {p0, v5}, Landroidx/core/app/ActivityCompat;->checkSelfPermission(Landroid/content/Context;Ljava/lang/String;)I
+    invoke-static {p0, v0}, Landroidx/core/app/ActivityCompat;->checkSelfPermission(Landroid/content/Context;Ljava/lang/String;)I
 
-    move-result v12
+    move-result v1
 
-    if-eqz v12, :cond_9
+    if-eqz v1, :cond_1
 
-    .line 157
-    new-array v6, v6, [Ljava/lang/String;
+    const/4 v1, 0x1
 
-    aput-object v5, v6, v2
+    new-array v2, v1, [Ljava/lang/String;
 
-    invoke-virtual {p0, v6, v2}, Lcom/winlator/cmod/MainActivity;->requestPermissions([Ljava/lang/String;I)V
+    const/4 v1, 0x0
 
-    .line 161
-    .end local v10    # "selectedMenuItemId":I
-    .end local v11    # "menuItemId":I
-    :cond_9
-    :goto_3
+    aput-object v0, v2, v1
+
+    invoke-virtual {p0, v2, v1}, Lcom/winlator/cmod/MainActivity;->requestPermissions([Ljava/lang/String;I)V
+
+    :cond_1
     return-void
 .end method
 

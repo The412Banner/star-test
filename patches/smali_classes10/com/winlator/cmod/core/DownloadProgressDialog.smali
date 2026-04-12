@@ -394,3 +394,47 @@
     .line 47
     return-void
 .end method
+
+.method public showPermissionsButton()V
+    .locals 5
+
+    iget-object v0, p0, Lcom/winlator/cmod/core/DownloadProgressDialog;->dialog:Landroid/app/Dialog;
+
+    if-eqz v0, :return
+
+    const v1, 0x7f090093
+
+    invoke-virtual {v0, v1}, Landroid/app/Dialog;->findViewById(I)Landroid/view/View;
+
+    move-result-object v1
+
+    if-eqz v1, :find_btn
+
+    const/4 v2, 0x0
+
+    invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
+
+    :find_btn
+    const v1, 0x7f09000d
+
+    invoke-virtual {v0, v1}, Landroid/app/Dialog;->findViewById(I)Landroid/view/View;
+
+    move-result-object v1
+
+    if-eqz v1, :return
+
+    iget-object v2, p0, Lcom/winlator/cmod/core/DownloadProgressDialog;->activity:Landroid/app/Activity;
+
+    new-instance v3, Lcom/winlator/cmod/core/DownloadProgressDialog$$ExternalSyntheticLambda2;
+
+    invoke-direct {v3, p0, v2}, Lcom/winlator/cmod/core/DownloadProgressDialog$$ExternalSyntheticLambda2;-><init>(Lcom/winlator/cmod/core/DownloadProgressDialog;Landroid/app/Activity;)V
+
+    new-instance v4, Lcom/winlator/cmod/core/DownloadProgressDialog$$ExternalSyntheticLambda1;
+
+    invoke-direct {v4, v3}, Lcom/winlator/cmod/core/DownloadProgressDialog$$ExternalSyntheticLambda1;-><init>(Ljava/lang/Runnable;)V
+
+    invoke-virtual {v1, v4}, Landroid/view/View;->setOnClickListener(Landroid/view/View$OnClickListener;)V
+
+    :return
+    return-void
+.end method
