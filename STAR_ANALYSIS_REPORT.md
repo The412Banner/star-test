@@ -30,8 +30,8 @@
 | 6 | GOG: Main / Login / Games Activities all launch | ✅ |
 | 6 | Epic: Main / Login / Games Activities all launch | ✅ |
 | 6 | Amazon: Main / Login / Games Activities all launch | ✅ |
-| 7 | End-to-end download + shortcut + launch | ⏳ Pending full testing |
-| 7 | Stable release `v1.0.0` | ⏳ After full testing |
+| 7 | End-to-end download + shortcut + launch | ✅ Verified on device |
+| 7 | Stable release `v1.0.0` | ✅ https://github.com/The412Banner/star-test/releases/tag/v1.0.0 |
 
 ---
 
@@ -958,6 +958,6 @@ That is the complete integration — roughly 30 minutes of work with source acce
 
 ---
 
-*Report version: 3.0 — 2026-04-11 (device verified)*  
+*Report version: 3.1 — 2026-04-12 (v1.0.0 stable released, all phases complete)*  
 *Integration repo: https://github.com/The412Banner/star-test*  
 *Reference builds: Ludashi-plus · REF4IK-Banner*
