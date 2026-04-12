@@ -45,6 +45,17 @@ jobs:
           cp -r patches/* apktool_out/
           echo "Patches applied"
 
+      - name: Remove ab_*.png pseudo-PNG files before aapt2
+        run: |
+          DRAWABLE_DIR="apktool_out/res/drawable"
+          AB_COUNT=$(find "$DRAWABLE_DIR" -name 'ab_*.png' | wc -l)
+          echo "Removing $AB_COUNT ab_*.png pseudo-PNG files"
+          find "$DRAWABLE_DIR" -name 'ab_*.png' -delete
+          rm -f "$DRAWABLE_DIR/animated_background.xml"
+          sed -i '/name="ab_[0-9]\|name="animated_background/d' \
+            apktool_out/res/values/public.xml
+          echo "Done — aapt2 will not see ab_* entries"
+
       - name: Download org.json dependency
         run: |
           wget -q "https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar" -O org-json.jar
@@ -81,6 +92,20 @@ jobs:
         run: |
           apktool b apktool_out -o rebuilt-unsigned.apk
           echo "Rebuilt APK: $(du -sh rebuilt-unsigned.apk | cut -f1)"
+
+      - name: Re-inject ab_*.png and animated_background.xml from base APK
+        run: |
+          mkdir -p ab_reinject
+          unzip -q base.apk \
+            'res/drawable/ab_*.png' \
+            'res/drawable/animated_background.xml' \
+            -d ab_reinject 2>/dev/null || true
+          INJECTED=$(find ab_reinject -type f | wc -l)
+          echo "Re-injecting $INJECTED files from base APK"
+          if [ "$INJECTED" -gt 0 ]; then
+            (cd ab_reinject && zip -r ../rebuilt-unsigned.apk res/)
+            echo "ab_/animated entries in APK: $(unzip -l rebuilt-unsigned.apk | grep 'res/drawable/ab_\|animated_background' | wc -l)"
+          fi
 
       - name: Inject classes17.dex
         run: |
