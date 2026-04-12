@@ -1359,6 +1359,7 @@
 
     .end local v10    # "selectedMenuItemId":I
     .end local v11    # "menuItemId":I
+    :goto_3
     return-void
 .end method
 
