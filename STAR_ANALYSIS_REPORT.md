@@ -4,7 +4,16 @@
 **Date:** 2026-04-11  
 **APK:** `star-Bionic_original.apk`  
 **GitHub Repo:** https://github.com/The412Banner/star-test  
-**Purpose:** Full architectural map of Star Bionic V1.0 + injection plan for GOG, Epic Games, and Amazon Games store integrations
+**Reference implementations:** Ludashi-plus · REF4IK-Banner  
+**Purpose:** Full architectural map of Star Bionic V1.0 + exact injection blueprint for GOG, Epic Games, and Amazon Games store integrations
+
+---
+
+## Executive Summary
+
+Star Bionic is a **Winlator Bionic** build sharing the exact same Java source package (`com.winlator.cmod.*`) as Ludashi-plus and REF4IK-Banner. This means the **28 Java extension files** already written and proven in those projects transfer directly to Star — zero rewrites required. Only three surgical changes to the existing smali/resources are needed to wire the stores into the navigation drawer, plus a CI workflow to compile and inject the new DEX on every build.
+
+**Effort estimate:** ~2–3 hours of implementation + one CI iteration.
 
 ---
 
@@ -12,469 +21,549 @@
 
 | Field | Value |
 |---|---|
-| Package name | `com.winlator.star` |
+| Package name (manifest) | `com.winlator.star` |
+| Source package | `com.winlator.cmod.*` (same as Ludashi-plus & REF4IK) |
 | App version | `Bionic V1.0` |
 | Version code | `20` |
-| Min SDK | 26 (Android 8.0 Oreo) |
-| Target SDK | 28 (Android 9 Pie) |
-| APK size | ~547 MB |
+| Min SDK | 26 (Android 8.0) |
+| Target SDK | 28 (Android 9) |
+| APK size | ~547 MB (includes bundled Wine, Proton, imagefs) |
 | DEX count | 16 (classes.dex → classes16.dex) |
 | Decompile tool | apktool 2.9.3 |
-| Architecture | arm64 (FEXCore + Box64 translation) |
 
 ---
 
-## 2. High-Level Architecture
+## 2. Architecture Overview
 
-Star Bionic is a **Winlator-based** Android app (not GameHub/Ludashi). It runs Windows EXEs on Android via Wine + Box64/FEXCore translation with a full native UI. It is **completely open in smali** — no obfuscation, all class names preserved.
-
-### Runtime Stack
 ```
-Android App (Java/Kotlin smali)
+Android Navigation Drawer (MainActivity)
+    ↓ menu item selected
+    startActivity(StoreActivity)          ← injection point
+    ↓ user browses / downloads game
+    LudashiLaunchBridge.addToLauncher()  ← reflection, no stubs needed
+    ↓ container picker dialog
+    .desktop file → container Desktop dir
     ↓
-ContainerManager → Container (isolated Wine prefix per container)
-    ↓
-XServerDisplayActivity → Wine via ImageFs (Linux rootfs)
-    ↓
-FEXCore / Box64 → x86/x64 EXE execution
-    ↓
-DXVK + VKD3D → Vulkan graphics
+ShortcutsFragment picks it up automatically
+    ↓ user taps shortcut
+XServerDisplayActivity → Wine → FEXCore/Box64 → game.exe
 ```
-
-### Key Libraries Bundled in Assets
-| Asset | Purpose |
-|---|---|
-| `imagefs.txz` (175 MB) | Linux rootfs (Debian-based) — the "Z: drive" |
-| `container_pattern_common.tzst` (77 MB) | Wine prefix template |
-| `proton-9.0-arm64ec.txz` (62 MB) | Proton 9.0 for ARM64ec |
-| `proton-9.0-x86_64.txz` (48 MB) | Proton 9.0 for x86_64 |
-| `layers.tzst` (4.3 MB) | Vulkan layers |
-| `pulseaudio.tzst` (741 KB) | Audio server |
 
 ---
 
 ## 3. Navigation Structure
 
-The main activity uses a **Material Navigation Drawer** (`NavigationView`).
+**File:** `apktool_out/res/menu/main_menu.xml`  
+**Dispatch:** `MainActivity.onNavigationItemSelected()` in `smali_classes8/com/winlator/cmod/MainActivity.smali` line 1413, using a **`sparse-switch`** at line 1445.
 
-### Menu Items (res/menu/main_menu.xml)
-| Menu ID | Fragment | Description |
+### Current menu items & IDs
+
+| ID name | Hex value | Fragment launched |
 |---|---|---|
-| `main_menu_shortcuts` | `ShortcutsFragment` | All installed game shortcuts |
-| `main_menu_containers` | `ContainersFragment` | Wine prefix management |
-| `main_menu_input_controls` | `InputControlsFragment` | Gamepad/touch profiles |
-| `main_menu_contents` | `ContentsFragment` | Wine components installer |
-| `main_menu_adrenotools_gpu_drivers` | `AdrenotoolsFragment` | GPU driver manager |
-| `main_menu_saves` | `SavesFragment` | Save state management |
-| `main_menu_settings` | `SettingsFragment` | App settings |
-| `main_menu_about` | Dialog | About dialog |
+| `main_menu_about` | `0x7f090269` | `showAboutDialog()` |
+| `main_menu_adrenotools_gpu_drivers` | `0x7f09026b` | `AdrenotoolsFragment` |
+| `main_menu_containers` | `0x7f09026c` | `ContainersFragment` |
+| `main_menu_contents` | `0x7f09026d` | `ContentsFragment` |
+| `main_menu_input_controls` | `0x7f090271` | `InputControlsFragment` |
+| `main_menu_saves` | `0x7f090279` | `SavesFragment` |
+| `main_menu_settings` | `0x7f09027b` | `SettingsFragment` |
+| `main_menu_shortcuts` | `0x7f09027c` | `ShortcutsFragment` |
+| `main_menu_task_manager` | `0x7f09027d` | (runtime menu, not drawer) |
+| `main_menu_toggle_fullscreen` | `0x7f09027e` | (runtime menu, not drawer) |
 
-**Dispatch code:** `MainActivity.onNavigationItemSelected()` at line 1413 of `smali_classes8/com/winlator/cmod/MainActivity.smali` — uses a `sparse-switch` on menu item ID.
+**Highest used ID: `0x7f09027e`**. New store IDs use the next 3 slots.
+
+### New store menu IDs
+
+| ID name | Hex value | Activity |
+|---|---|---|
+| `main_menu_gog` | `0x7f09027f` | `GogMainActivity` |
+| `main_menu_epic` | `0x7f090280` | `EpicMainActivity` |
+| `main_menu_amazon` | `0x7f090281` | `AmazonMainActivity` |
 
 ---
 
-## 4. Container System
+## 4. Container & Shortcut System
 
-### Class: `com.winlator.cmod.container.Container`
+### Container class: `com.winlator.cmod.container.Container`
 **DEX:** `smali_classes14`
 
-Each Container is an isolated Wine prefix. Key fields:
-| Field | Type | Notes |
+| Method | Returns | Description |
 |---|---|---|
-| `id` | `int` | Unique container ID |
-| `name` | `String` | Display name |
-| `rootDir` | `File` | Local filesystem path to this container |
-| `drives` | `String` | Drive letter mappings (see below) |
-| `dxwrapper` | `String` | Default: `"dxvk+vkd3d"` |
-| `graphicsDriver` | `String` | Default: `"wrapper"` |
-| `wineVersion` | `String` | Wine build identifier |
-| `emulator` | `String` | Default: `"FEXCore"` |
-
-### Key Methods
-| Method | Returns | Notes |
-|---|---|---|
-| `getRootDir()` | `File` | Base path of this container |
+| `getRootDir()` | `File` | Base directory of this Wine prefix |
 | `getDesktopDir()` | `File` | `rootDir/.wine/drive_c/users/xuser/Desktop/` |
-| `getStartMenuDir()` | `File` | `rootDir/.wine/drive_c/ProgramData/Microsoft/Windows/Start Menu/` |
-| `getDrives()` | `String` | Comma-separated drive mappings |
-| `drivesIterator()` | `Iterable` | Iterates drive letter:path pairs |
+| `getDrives()` | `String` | Drive letter mappings |
+| `getName()` | `String` | Display name |
 
-### Drive Letter Format
-```
-DEFAULT_DRIVES = "F:" + Environment.getExternalStorageDirectory() + "D:" + Environment.getExternalStoragePublicDirectory(DOWNLOADS)
-```
-Format is: `"<LETTER>:<PATH>,<LETTER>:<PATH>,..."`
-- **F:** → `/sdcard` (external storage)
-- **D:** → `/sdcard/Download`
-- **Z:** → imagefs root (see below) — maps to the Linux rootfs `/`
+**Default drives:**
+- `F:` → `/sdcard` (external storage)
+- `D:` → `/sdcard/Download`
+- `Z:` → imagefs root (`context.getFilesDir()/imagefs/`) — confirmed by `ShortcutsFragment.smali` line 851–863
 
-### Class: `com.winlator.cmod.container.ContainerManager`
-**DEX:** `smali_classes14`
+### Shortcut format (.desktop file)
 
-Manages all containers. Key methods:
-| Method | Notes |
-|---|---|
-| `loadShortcuts()` | Scans all container Desktop dirs for `.lnk`/`.desktop` files |
-| `loadContainers()` | Loads all containers from storage |
-| `createContainerAsync()` | Creates new container async |
-| `getContainerForShortcut()` | Finds which container owns a shortcut |
+Written to `container.getDesktopDir()/<gameName>.desktop`:
 
----
-
-## 5. Shortcut System
-
-### Class: `com.winlator.cmod.container.Shortcut`
-**DEX:** `smali_classes14`
-
-Fields:
-| Field | Type | Notes |
-|---|---|---|
-| `container` | `Container` | Parent container |
-| `file` | `File` | The `.desktop` file |
-| `name` | `String` | Display name |
-| `path` | `String` | Windows-style exe path (e.g. `Z:\\path\\to\\game.exe`) |
-| `wmClass` | `String` | WM class for window matching |
-| `icon` | `Bitmap` | App icon |
-
-### .desktop File Format
-When a shortcut is created from a file picker, `ShortcutsFragment` writes:
 ```ini
 [Desktop Entry]
-Name=<game name without .exe>
-Exec=wine <DRIVE_LETTER>\\<filename>
+Name=Game Name
+Exec=wine Z:\\gog_games\\GameDir\\game.exe
+Icon=
 Type=Application
+StartupWMClass=explorer
+
+[Extra Data]
 ```
 
-The `.desktop` file is saved to `container.getDesktopDir()` → `rootDir/.wine/drive_c/users/xuser/Desktop/<name>.desktop`
+`ContainerManager.loadShortcuts()` automatically scans all container Desktop dirs on next load. No additional code needed to make the shortcut appear in the Shortcuts tab.
 
-Shortcuts are loaded by `ContainerManager.loadShortcuts()` which scans every container's Desktop dir for `.lnk` and `.desktop` files.
+### LudashiLaunchBridge — reflection-based container picker
 
-### Z: Drive Mapping (Critical)
-From `ShortcutsFragment.smali` line 851–863:
-```smali
-const-string v1, "/imagefs/"
-invoke-virtual {v0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-# if path contains "/imagefs/" → drive letter is "Z:"
-const-string v1, "Z:"
-```
-**Z: = any path that contains `/imagefs/`** — this is the Linux rootfs mounted at Wine's Z drive. The imagefs is located at `context.getFilesDir()/imagefs/`.
+The `LudashiLaunchBridge.java` file (already in `Ludashi-plus/extension/`) uses **Java reflection** to call `ContainerManager` — so it compiles against `android.jar` alone, with no Winlator stubs. It:
+1. Instantiates `ContainerManager` via reflection
+2. Calls `getContainers()` → list of all user containers
+3. Shows `AlertDialog` with container names
+4. On selection: calls `getDesktopDir()` → writes `.desktop` file
 
-### Container Selection Dialog
-`ShortcutsFragment` already has a `showContainerSelectionDialog(ArrayList<Container>, OnContainerSelectedListener)` method (line 1684). It shows a list of all containers and fires a callback when one is selected. **This is the exact mechanism we will reuse for store integrations.**
-
-Layout: `res/layout/container_selection_dialog.xml` (already exists)
+**This file works on Star unchanged.** The source package `com.winlator.cmod.container.ContainerManager` is present in `smali_classes14` and has the same API.
 
 ---
 
-## 6. ImageFs / Z Drive Path
+## 5. Install Path Strategy
 
-### Class: `com.winlator.cmod.xenvironment.ImageFs`
-**DEX:** `smali_classes12`
+Games install under `imagefs/` so Wine's `Z:` drive can reach them directly:
 
-```java
-// Location:
-context.getFilesDir() + "/imagefs/"
+| Store | Android path | Wine path |
+|---|---|---|
+| GOG | `{filesDir}/imagefs/gog_games/{gameDir}/` | `Z:\gog_games\{gameDir}\game.exe` |
+| Epic | `{filesDir}/imagefs/epic_games/{gameDir}/` | `Z:\epic_games\{gameDir}\game.exe` |
+| Amazon | `{filesDir}/imagefs/amazon_games/{gameDir}/` | `Z:\amazon_games\{gameDir}\game.exe` |
 
-// Internal structure:
-rootDir/opt/<wine_version>/          // Wine binaries
-rootDir/home/xuser/                  // User home
-rootDir/home/xuser/.wine/            // Default Wine prefix
-rootDir/home/xuser/.cache/
-rootDir/home/xuser/.config/
-```
-
-The imagefs is the **shared Linux environment** used by all containers. Containers each have their own `rootDir` (Wine prefix), but they all run inside the same imagefs.
-
-**For game installs:** Downloaded EXEs should go into a container's own drive mapping. The best target is Drive D: (`/sdcard/Download`) or Drive F: (`/sdcard`), or a subfolder we define. The game is then referenced as `D:\\games\\<name>\\game.exe` in the shortcut.
+`GogInstallPath.getInstallDir(ctx, name)` calls `ctx.getFilesDir()` which returns the Star-specific data dir (`com.winlator.star`) automatically at runtime. No code change required.
 
 ---
 
-## 7. DEX Method Counts & Available Space
+## 6. Extension Files — Full Reusability Matrix
 
-| DEX | Files | Approx Methods | Available (of 65535) |
+All 28 Java files from `Ludashi-plus/extension/` are in package `com.winlator.cmod.store`. They compile against `android.jar` alone (reflection for Winlator calls). **Zero rewrites needed for Star.**
+
+| File | Size | Reuse | Notes |
 |---|---|---|---|
-| classes (DEX 1) | 6,728 | ~54,340 | ~11,000 — **nearly full** |
-| classes2 | 295 | ~319 | Large space |
-| classes3–7 | small | <1,000 total | Available |
-| classes8 | 322 | ~1,515 | Available |
-| classes9–15 | small | <3,000 total | Available |
-| **classes16** | **5,302** | **~33,331** | **~32,000 — best for new code** |
+| `GogGame.java` | 795B | ✅ Direct | POJO model |
+| `GogInstallPath.java` | 1.2KB | ✅ Direct | Path helper — uses `ctx.getFilesDir()` |
+| `GogLaunchHelper.java` | 400B | ✅ Direct | Wrapper over LudashiLaunchBridge |
+| `GogTokenRefresh.java` | 3.1KB | ✅ Direct | Pure HTTP token refresh |
+| `GogDownloadManager.java` | 64KB | ✅ Direct | Full GOG API + parallel download engine |
+| `GogLoginActivity.java` | 7.2KB | ✅ Direct | WebView OAuth login |
+| `GogMainActivity.java` | 6.7KB | ✅ Direct | Entry-point Activity |
+| `GogGamesActivity.java` | 66KB | ✅ Direct | Library list + download UI |
+| `EpicGame.java` | 1.6KB | ✅ Direct | POJO model |
+| `EpicCredentialStore.java` | 3.8KB | ✅ Direct | SharedPreferences wrapper |
+| `EpicAuthClient.java` | 9.6KB | ✅ Direct | Pure HTTP auth |
+| `EpicApiClient.java` | 11.7KB | ✅ Direct | Pure HTTP API |
+| `EpicDownloadManager.java` | 45KB | ✅ Direct | Chunked download engine |
+| `EpicLoginActivity.java` | 5.4KB | ✅ Direct | WebView OAuth |
+| `EpicMainActivity.java` | 5.8KB | ✅ Direct | Entry-point Activity |
+| `EpicGamesActivity.java` | 56KB | ✅ Direct | Library list + download UI |
+| `AmazonGame.java` | 1.5KB | ✅ Direct | POJO model |
+| `AmazonCredentialStore.java` | 4.9KB | ✅ Direct | SharedPreferences wrapper |
+| `AmazonPKCEGenerator.java` | 2.7KB | ✅ Direct | PKCE generator |
+| `AmazonAuthClient.java` | 9.8KB | ✅ Direct | PKCE device registration |
+| `AmazonApiClient.java` | 13KB | ✅ Direct | GetEntitlements + manifest |
+| `AmazonManifest.java` | 12.8KB | ✅ Direct | Protobuf manifest parser |
+| `AmazonDownloadManager.java` | 18.7KB | ✅ Direct | Parallel download + XZ/LZMA |
+| `AmazonSdkManager.java` | 10.4KB | ✅ Direct | FuelSDK DLL deployment |
+| `AmazonLaunchHelper.java` | 11.2KB | ✅ Direct | fuel.json launch env |
+| `AmazonLoginActivity.java` | 7.2KB | ✅ Direct | PKCE WebView login |
+| `AmazonMainActivity.java` | 6.8KB | ✅ Direct | Entry-point Activity |
+| `AmazonGamesActivity.java` | 56.5KB | ✅ Direct | Library list + download UI |
+| `LudashiLaunchBridge.java` | 5.7KB | ✅ Direct | Container picker + .desktop writer |
 
-**Recommendation:** Add new store classes to a **new `smali_classes17/` directory** (apktool creates `classes17.dex` automatically). This avoids any DEX limit risk and keeps store code cleanly separated.
-
----
-
-## 8. Store Integration Plan
-
-### Overview
-We add three new navigation menu entries — **GOG**, **Epic Games**, and **Amazon Games** — each launching a Fragment that handles auth, library sync, download, and shortcut creation. The entire integration flows through the existing Winlator shortcut system.
-
-### Game Install Flow (All Three Stores)
-```
-User opens Store tab
-    → Auth (OAuth/WebView)
-    → Library sync (API call)
-    → User selects game → tap Download
-    → DownloadManager downloads to /sdcard/StarGames/<store>/<game>/
-    → On completion: showContainerSelectionDialog()
-    → User picks container
-    → Write .desktop file to container.getDesktopDir()/<game>.desktop
-    → ShortcutsFragment.loadShortcuts() picks it up automatically
-    → Game appears in Shortcuts tab
-```
-
-### Download Destination
-```
-/sdcard/StarGames/
-    gog/<game_name>/          → D:\StarGames\gog\<game>\game.exe
-    epic/<game_name>/         → D:\StarGames\epic\<game>\game.exe
-    amazon/<game_name>/       → D:\StarGames\amazon\<game>\game.exe
-```
-
-This maps to Drive D: (already in DEFAULT_DRIVES as `/sdcard/Download`... we'll use D: or add a new drive letter like G:).
-
-**Better approach:** Add a dedicated drive letter (e.g., `G:`) pointing to `/sdcard/StarGames/` in each container's drives when a game is installed. This keeps store games cleanly separated from other user files.
+**Dependencies needed at compile time:**
+- `org.json` JAR — `https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar`
+- `commons-compress` JAR (Amazon LZMA) — `https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.26.0/commons-compress-1.26.0.jar`
 
 ---
 
-## 9. Injection Points
+## 7. DEX Strategy
 
-### 9.1 Menu XML
-**File:** `apktool_out/res/menu/main_menu.xml`
+| DEX slot | Current contents | Status |
+|---|---|---|
+| classes (DEX 1) | androidx, kotlin stdlib, OkHttp, etc. | ~54,340 methods — **full** |
+| classes2 | R$* resource refs | Available |
+| classes3–7 | small fexcore/audio/box64 packages | Available |
+| classes8 | main app fragments + activities | ~1,515 methods |
+| classes9–16 | container, xenvironment, renderer, bigpicture, etc. | Occupied |
+| **classes17** | **→ NEW: store extension** | **First free slot** |
 
-Add before the Settings item:
-```xml
-<item android:icon="@drawable/icon_open" android:id="@id/main_menu_gog" android:title="GOG Games" />
-<item android:icon="@drawable/icon_open" android:id="@id/main_menu_epic" android:title="Epic Games" />
-<item android:icon="@drawable/icon_open" android:id="@id/main_menu_amazon" android:title="Amazon Games" />
-```
+All 28 extension Java files + `org.json` + `commons-compress` compile to approximately **~2,500 methods** total — well under the 65,535 DEX limit. One new `classes17.dex` is sufficient.
 
-### 9.2 Resource IDs
-**File:** `apktool_out/res/values/public.xml`
+**No existing DEX is modified.** Zero risk of hitting method limits in existing DEX files.
 
-Add new ID entries (pick unused hex IDs after highest existing `id` type entry):
-```xml
-<public type="id" name="main_menu_gog" id="0x7f0900XX" />
-<public type="id" name="main_menu_epic" id="0x7f0900YY" />
-<public type="id" name="main_menu_amazon" id="0x7f0900ZZ" />
-```
+---
 
-### 9.3 MainActivity sparse-switch
-**File:** `smali_classes8/com/winlator/cmod/MainActivity.smali`
+## 8. Exact Smali Patch Targets
 
-Add three new `sswitch_N:` cases in `onNavigationItemSelected()`:
+### 8.1 MainActivity — sparse-switch extension
+
+**File:** `patches/smali_classes8/com/winlator/cmod/MainActivity.smali`  
+**Method:** `onNavigationItemSelected` — starts at line 1413  
+**Switch table:** line 1539, `.sparse-switch` format
+
+**Current sparse-switch (lines 1539–1548):**
 ```smali
-:sswitch_NEW_GOG
-    new-instance v1, Lcom/winlator/cmod/store/GogFragment;
-    invoke-direct {v1}, Lcom/winlator/cmod/store/GogFragment;-><init>()V
-    invoke-direct {p0, v1, v3}, Lcom/winlator/cmod/MainActivity;->show(Landroidx/fragment/app/Fragment;Z)V
+:sswitch_data_0
+.sparse-switch
+    0x7f090269 -> :sswitch_7   # about
+    0x7f09026b -> :sswitch_6   # adrenotools
+    0x7f09026c -> :sswitch_5   # containers
+    0x7f09026d -> :sswitch_4   # contents
+    0x7f090271 -> :sswitch_3   # input_controls
+    0x7f090279 -> :sswitch_2   # saves
+    0x7f09027b -> :sswitch_1   # settings
+    0x7f09027c -> :sswitch_0   # shortcuts
+.end sparse-switch
+```
+
+**Patched sparse-switch (add 3 entries):**
+```smali
+:sswitch_data_0
+.sparse-switch
+    0x7f090269 -> :sswitch_7   # about
+    0x7f09026b -> :sswitch_6   # adrenotools
+    0x7f09026c -> :sswitch_5   # containers
+    0x7f09026d -> :sswitch_4   # contents
+    0x7f090271 -> :sswitch_3   # input_controls
+    0x7f090279 -> :sswitch_2   # saves
+    0x7f09027b -> :sswitch_1   # settings
+    0x7f09027c -> :sswitch_0   # shortcuts
+    0x7f09027f -> :sswitch_8   # GOG    ← NEW
+    0x7f090280 -> :sswitch_9   # Epic   ← NEW
+    0x7f090281 -> :sswitch_a   # Amazon ← NEW
+.end sparse-switch
+```
+
+**New handler blocks** (insert before `:sswitch_data_0`):
+```smali
+    :sswitch_8
+    new-instance v1, Landroid/content/Intent;
+    const-class v3, Lcom/winlator/cmod/store/GogMainActivity;
+    invoke-direct {v1, p0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+    invoke-virtual {p0, v1}, Lcom/winlator/cmod/MainActivity;->startActivity(Landroid/content/Intent;)V
     goto :goto_0
 
-:sswitch_NEW_EPIC
-    new-instance v1, Lcom/winlator/cmod/store/EpicFragment;
-    invoke-direct {v1}, Lcom/winlator/cmod/store/EpicFragment;-><init>()V
-    invoke-direct {p0, v1, v3}, Lcom/winlator/cmod/MainActivity;->show(Landroidx/fragment/app/Fragment;Z)V
+    :sswitch_9
+    new-instance v1, Landroid/content/Intent;
+    const-class v3, Lcom/winlator/cmod/store/EpicMainActivity;
+    invoke-direct {v1, p0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+    invoke-virtual {p0, v1}, Lcom/winlator/cmod/MainActivity;->startActivity(Landroid/content/Intent;)V
     goto :goto_0
 
-:sswitch_NEW_AMAZON
-    new-instance v1, Lcom/winlator/cmod/store/AmazonFragment;
-    invoke-direct {v1}, Lcom/winlator/cmod/store/AmazonFragment;-><init>()V
-    invoke-direct {p0, v1, v3}, Lcom/winlator/cmod/MainActivity;->show(Landroidx/fragment/app/Fragment;Z)V
+    :sswitch_a
+    new-instance v1, Landroid/content/Intent;
+    const-class v3, Lcom/winlator/cmod/store/AmazonMainActivity;
+    invoke-direct {v1, p0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+    invoke-virtual {p0, v1}, Lcom/winlator/cmod/MainActivity;->startActivity(Landroid/content/Intent;)V
     goto :goto_0
 ```
 
-And update the `sparse-switch` table to include the new IDs.
+> **Register note (from REF4IK lesson):** Use `v3` as scratch — NOT `v2`. The method sets `v2 = 0x1` (boolean true) early as a return value. Clobbering `v2` with a Class reference causes a `VerifyError` at install time. `v3` is safe (confirmed from the existing `sswitch_7`/about handler pattern).
 
-### 9.4 New Smali Classes
-**Target DEX:** `smali_classes17/com/winlator/cmod/store/`
+### 8.2 R$id.smali — 3 new field constants
 
-| Class | Role |
-|---|---|
-| `GogFragment` | GOG library UI, auth, game list |
-| `GogDownloadManager` | GOG API calls, file download |
-| `EpicFragment` | Epic library UI, auth, game list |
-| `EpicDownloadManager` | Epic manifest download pipeline |
-| `AmazonFragment` | Amazon library UI, PKCE auth |
-| `AmazonDownloadManager` | Amazon manifest.proto + LZMA download |
-| `StoreShortcutHelper` | Shared: write .desktop file, pick container |
-| `StoreGameCard` | Shared: game card UI view |
+**File:** `patches/smali_classes2/com/winlator/cmod/R$id.smali`
 
----
-
-## 10. Shortcut Creation — Exact Smali Pattern
-
-When download completes, `StoreShortcutHelper` calls:
-
-```java
-// 1. Build the Windows path (Drive letter + relative path)
-//    Game installed to: /sdcard/StarGames/gog/GameName/game.exe
-//    Drive G: = /sdcard/StarGames/
-//    Windows path: "G:\\gog\\GameName\\game.exe"
-
-// 2. Write .desktop file content:
-String content = "[Desktop Entry]\nName=" + gameName + "\nExec=wine " 
-                 + driveLetter + "\\\\" + relPath + "\nType=Application";
-
-// 3. Save to container's Desktop dir:
-File desktopFile = new File(container.getDesktopDir(), gameName + ".desktop");
-FileWriter fw = new FileWriter(desktopFile);
-fw.write(content);
-fw.close();
-
-// 4. Reload shortcuts (ShortcutsFragment.adapter.notifyDataSetChanged or re-navigate)
+Add after the `main_menu_toggle_fullscreen` line:
+```smali
+.field public static final main_menu_gog:I = 0x7f09027f
+.field public static final main_menu_epic:I = 0x7f090280
+.field public static final main_menu_amazon:I = 0x7f090281
 ```
 
-The container selection uses the existing `container_selection_dialog.xml` layout — show an `AlertDialog` with container names and fire callback on selection.
+### 8.3 Summary of all patch files
+
+| File | Location | Change |
+|---|---|---|
+| `MainActivity.smali` | `patches/smali_classes8/com/winlator/cmod/` | Add 3 sswitch entries + 3 handler blocks |
+| `R$id.smali` | `patches/smali_classes2/com/winlator/cmod/` | Add 3 field constants |
+| `main_menu.xml` | `patches/res/menu/` | Add 3 `<item>` elements |
+| `public.xml` | `patches/res/values/` | Add 3 ID pins |
+| `AndroidManifest.xml` | `patches/` | Add 9 `<activity>` declarations |
 
 ---
 
-## 11. Container Drive Extension
+## 9. Manifest Additions
 
-To add Drive G: (StarGames) to a container at install time:
+Add inside the `<application>` block:
 
-```java
-// Read current drives string
-String drives = container.getDrives();
-String starGamesPath = Environment.getExternalStorageDirectory() + "/StarGames";
-// Append if not already present
-if (!drives.contains("G:")) {
-    drives += "G:" + starGamesPath;
-    container.setDrives(drives);
-    containerManager.saveContainer(container); // writes back to JSON
-}
+```xml
+<!-- GOG Game Store -->
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.GogMainActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.GogLoginActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.GogGamesActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+
+<!-- Epic Games Store -->
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.EpicMainActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.EpicLoginActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.EpicGamesActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+
+<!-- Amazon Games -->
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.AmazonMainActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.AmazonLoginActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
+<activity android:exported="false"
+    android:name="com.winlator.cmod.store.AmazonGamesActivity"
+    android:screenOrientation="fullSensor"
+    android:theme="@style/AppTheme"/>
 ```
 
-In smali, `Container.setDrives()` is at line 3081 of `smali_classes14/com/winlator/cmod/container/Container.smali`. `ContainerManager.saveContainer()` handles JSON serialization.
+---
+
+## 10. Menu Resource Changes
+
+### `patches/res/menu/main_menu.xml`
+
+Add 3 items after `main_menu_shortcuts`:
+
+```xml
+<item android:icon="@drawable/icon_open"
+    android:id="@id/main_menu_gog"
+    android:title="GOG" />
+<item android:icon="@drawable/icon_open"
+    android:id="@id/main_menu_epic"
+    android:title="Epic Games" />
+<item android:icon="@drawable/icon_open"
+    android:id="@id/main_menu_amazon"
+    android:title="Amazon Games" />
+```
+
+### `patches/res/values/public.xml`
+
+Add to the `id` type section (pins hex values so aapt2 doesn't reassign them):
+
+```xml
+<public type="id" name="main_menu_gog" id="0x7f09027f" />
+<public type="id" name="main_menu_epic" id="0x7f090280" />
+<public type="id" name="main_menu_amazon" id="0x7f090281" />
+```
 
 ---
 
-## 12. Existing Reusable UI Assets
+## 11. CI Build Workflow (build.yml)
 
-Already present in `res/layout/`:
-| Layout | Reuse For |
-|---|---|
-| `container_selection_dialog.xml` | Container picker after download |
-| `download_progress_dialog.xml` | Download progress overlay |
-| `content_list_item.xml` | Game library list items |
-| `content_dialog.xml` | Base dialog template |
+Full workflow from scratch (Star has no existing CI):
+
+```yaml
+name: Build Star Bionic + Store Integration
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Install apktool
+        run: |
+          wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar -O apktool.jar
+          echo '#!/bin/sh' > apktool && echo 'java -jar /usr/local/bin/apktool.jar "$@"' >> apktool
+          chmod +x apktool && sudo mv apktool /usr/local/bin/apktool
+          sudo mv apktool.jar /usr/local/bin/apktool.jar
+
+      - name: Download base APK
+        run: |
+          gh release download base-apk --pattern "*.apk" --output base.apk
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decompile APK
+        run: apktool d base.apk -o apktool_out -f
+
+      - name: Apply patches
+        run: |
+          cp -r patches/* apktool_out/
+
+      - name: Download org.json dependency
+        run: |
+          wget -q "https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar" -O org-json.jar
+
+      - name: Download commons-compress (Amazon LZMA)
+        run: |
+          wget -q "https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.26.0/commons-compress-1.26.0.jar" -O commons-compress.jar
+
+      - name: Compile store extension → classes17.dex
+        run: |
+          ANDROID_JAR=$(ls $ANDROID_SDK_ROOT/platforms/android-*/android.jar | sort -V | tail -1)
+          echo "android.jar: $ANDROID_JAR"
+          mkdir -p ext_classes
+          javac -source 8 -target 8 \
+            -cp "$ANDROID_JAR:org-json.jar:commons-compress.jar" \
+            -d ext_classes extension/*.java
+          echo "Compiled $(find ext_classes -name '*.class' | wc -l) class files"
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
+          mkdir -p ext_dex
+          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/d8 \
+            --release --min-api 26 --output ext_dex \
+            $(find ext_classes -name '*.class') \
+            org-json.jar commons-compress.jar
+
+      - name: Rebuild APK
+        run: apktool b apktool_out -o rebuilt-unsigned.apk
+
+      - name: Inject classes17.dex
+        run: |
+          cp ext_dex/classes.dex classes17.dex
+          zip -j rebuilt-unsigned.apk classes17.dex
+          echo "classes17.dex injected: $(du -sh classes17.dex | cut -f1)"
+
+      - name: Zipalign
+        run: |
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
+          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/zipalign -p -f 4 rebuilt-unsigned.apk aligned.apk
+
+      - name: Sign APK
+        run: |
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools | sort -V | tail -1)
+          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner sign \
+            --key testkey.pk8 --cert testkey.x509.pem \
+            --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+            --out star-signed-${{ github.ref_name }}.apk aligned.apk
+
+      - name: Upload release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            star-signed-${{ github.ref_name }}.apk \
+            --title "Star Bionic ${{ github.ref_name }}" \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
 
 ---
 
-## 13. API Integration Summary
+## 12. Key API Constants
 
 ### GOG
-- Auth: OAuth 2.0 → `auth.gog.com/token` (client_id: `46899977096215655`, client_secret: `9d85c43b1718a031b8febb9294b1b8ff597be08cf536cdc80e818e48bef96b31`)
-- Library: `embed.gog.com/account/getFilteredProducts?mediaType=1`
-- Downloads: `content-system.gog.com/products/{id}/os/windows/builds?generation=2` → `cdn-gog-com.akamaized.net`
-- **Old games fallback:** `api.gog.com/products/{id}?expand=downloads` → direct `.exe` link
-- Install path: `/sdcard/StarGames/gog/<slug>/`
+- Auth URL: `https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https://embed.gog.com/on_login_success?origin=client&response_type=code`
+- Token URL: `https://auth.gog.com/token`
+- Client ID: `46899977096215655` (public)
+- Client secret: `9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9` (public)
+- Library API: `https://embed.gog.com/account/getFilteredProducts?mediaType=1`
+- Build API: `https://content-system.gog.com/products/{gameId}/os/windows/builds?generation=2`
+- **Old game fallback:** `https://api.gog.com/products/{id}?expand=downloads` → direct `.exe` link
 
 ### Epic Games
-- Auth: WebView → `epicgames.com/id/api/redirect` → JSON body `authorizationCode`
-- Library: `catalog-public-service-prod06.ol.epicgames.com/catalog/api/shared/namespace/{ns}/bulk/items`
-- Manifests: `launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/{appName}/build`
-- CDN chunks: Prefer Fastly (`egdownload.fastly-edge.com`) or Akamai (public, no tokens)
-- Chunk group subfolder: **DECIMAL** `%02d` format — not hex
-- `ChunkFilesizeList` values are **hex strings** — parse with `Long.parseLong(s, 16)`
-- Install path: `/sdcard/StarGames/epic/<name>/`
+- Auth: WebView → navigate to Epic login, redirect to `https://www.epicgames.com/id/api/redirect`
+- Read auth code: `evaluateJavascript("document.body.innerText")` in `onPageFinished` → parse `authorizationCode` JSON field
+- Library: `https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/public/assets/v2/`
+- CDN preference: Fastly (`egdownload.fastly-edge.com`) → Akamai → Cloudflare (last resort)
+- Chunk group subfolder: **DECIMAL** `"%02d".format(groupNum)` — not hex
+- `ChunkFilesizeList` values: **hex strings** — parse with `Long.parseLong(s, 16)`
 
 ### Amazon Games
-- Auth: PKCE OAuth → `api.amazon.com/auth/o2/token`
-- Library: `gaming.amazon.com/graphql` → `GetEntitlements` query
-- Manifests: `gaming.amazon.com/player/v1.0/manifests/{asin}` → `manifest.proto` (Protobuf + XZ/LZMA)
-- Download: parallel chunk fetch from S3 CDN
-- SDK DLLs: `FuelSDK_x64.dll` + `AmazonGamesSDK_*` needed in game dir
-- Launch: `fuel.json` sets `FuelPump` env vars (`AMAZON_APP_DATA_DIR`, etc.)
-- Install path: `/sdcard/StarGames/amazon/<slug>/`
+- Auth: PKCE OAuth — no client secret
+- GetEntitlements: `https://gaming.amazon.com/graphql`
+- Manifest: protobuf format + XZ/LZMA compression
+- SDK required: `FuelSDK_x64.dll` + `AmazonGamesSDK_*` deployed to game dir
+- Launch: `fuel.json` in game dir configures `FuelPump` env vars
 
 ---
 
-## 14. Implementation Phases
+## 13. Critical Lessons From REF4IK/Ludashi
 
-### Phase 1 — Navigation Scaffolding
-- Add menu IDs and items (GOG, Epic, Amazon) to `main_menu.xml` and `public.xml`
-- Add `sparse-switch` cases in `MainActivity.onNavigationItemSelected()`
-- Create stub Fragment smali files (placeholder UI) in `smali_classes17/`
-- **Goal:** Three new menu tabs appear and open without crash
+1. **ID conflict:** Always check `R$id.smali` for the highest existing `id`-type value before picking new IDs. Star's highest is `0x7f09027e` — new IDs start at `0x7f09027f`.
 
-### Phase 2 — GOG Integration
-- Auth flow (WebView OAuth)
-- Library list (RecyclerView with game cards)
-- Download pipeline (GOG build API + fallback)
-- Container selection + shortcut creation
+2. **Register `v2` is poisoned:** `onNavigationItemSelected` sets `v2 = 0x1` (boolean return) early in the method. ANY store handler that writes a class reference into `v2` will cause `VerifyError: register v2 has type IntegerConstant but expected Boolean`. Always use `v3` as scratch in injected blocks.
 
-### Phase 3 — Epic Integration
-- Auth flow (WebView → body JSON code extraction)
-- Library list
-- Manifest + chunk download pipeline
-- Container selection + shortcut creation
+3. **sparse-switch vs packed-switch:** Star uses `sparse-switch` (unlike REF4IK which uses `packed-switch`). `sparse-switch` is simpler to extend — just add new `0xID -> :label` lines anywhere in the table. No gap entries needed, no base value arithmetic.
 
-### Phase 4 — Amazon Integration
-- PKCE auth (WebView + token exchange)
-- Library list (GetEntitlements)
-- Protobuf manifest + chunk download
-- SDK DLL deployment + shortcut creation
+4. **DEX injection after apktool:** `apktool b` generates classes.dex through classes16.dex from the existing smali. `classes17.dex` must be injected via `zip -j` AFTER `apktool b` runs — apktool has no smali source to generate it from. Same pattern as REF4IK's `classes23.dex`.
 
-### Phase 5 — Polish
-- Unified game card UI across all three stores
-- Download queue manager (parallel downloads)
-- Progress notifications
-- Uninstall support (remove files + .desktop)
-- Drive G: auto-provision on first game install
+5. **Pin IDs in public.xml:** Without `<public type="id" name="..." id="0x7f09027f"/>` entries, aapt2 may assign different hex values on rebuild, breaking the switch table. Always pin.
+
+6. **LudashiLaunchBridge uses Context.getFilesDir():** Returns the correct data directory for whatever package is installed. Works on Star (`com.winlator.star`) without any code change.
+
+7. **imagefs Z: mapping:** Confirmed in `ShortcutsFragment.smali` — any path containing `/imagefs/` is mapped to `Z:`. Games MUST be installed under `{filesDir}/imagefs/` to be reachable by Wine.
+
+8. **screenOrientation:** Use `fullSensor` on all 9 store activities for auto-rotate support. Some REF4IK devices had lock issues with `sensorLandscape` alone on store Activities.
 
 ---
 
-## 15. Notes for the Star Developer
+## 14. Notes for the Star Developer
 
-### What we are NOT changing
-- Wine/FEXCore/Box64 runtime — untouched
-- Container creation/management system — untouched
-- All existing functionality — preserved
-- Signing key — standard AOSP testkey (same as Winlator community builds)
+### What this integration adds
+Three new entries in the side navigation drawer:
+- **GOG** — logs in via GOG OAuth, browses your GOG library, downloads games directly into the Wine filesystem, adds them to Shortcuts with one tap
+- **Epic Games** — logs in via Epic OAuth WebView, browses your Epic library, handles chunked Unreal Engine manifests, downloads via public Fastly/Akamai CDNs
+- **Amazon Games** — logs in via Amazon PKCE OAuth, fetches your Prime Gaming entitlements, downloads via Amazon's protobuf manifest system, deploys FuelSDK DLLs alongside the game
 
-### What we ARE adding
-- Three new navigation tabs (GOG / Epic / Amazon)
-- New smali classes in a new DEX (`classes17.dex`) — zero risk of DEX method limit collision
-- New resource IDs in `public.xml` — picked from unused range
-- One new smali edit to `MainActivity.onNavigationItemSelected()` — minimal, surgical
+### What is NOT changed
+- Wine runtime, FEXCore, Box64 — untouched
+- Container creation/management — untouched
+- All existing menus, shortcuts, settings — untouched
+- APK signing key — uses same AOSP testkey as community Winlator builds
 
-### Architectural Compatibility
-This app is structurally identical to open-source Winlator. The container, shortcut, and drive systems are clean and well-separated. The integration we are building is non-destructive and follows the same patterns the app already uses internally for shortcuts.
+### Where games land
+All downloaded games go inside the app's private storage at `{filesDir}/imagefs/{store}_games/{game}/`. They appear in Wine as `Z:\{store}_games\{game}\game.exe` and as native Winlator shortcuts in the Shortcuts menu.
 
-### Suggested Upstream Contribution Path
-If the developer wants to merge this upstream:
-- The Java source equivalents of our smali classes can be reconstructed and submitted as a PR to the upstream Winlator project
-- The GOG/Epic/Amazon logic is fully self-contained in `com.winlator.cmod.store.*`
-- The only core-app modification is one `switch` case addition in `MainActivity`
+### Source package
+All store code lives in `com.winlator.cmod.store.*` — a clean new sub-package, no collision with existing app code.
 
----
-
-## Appendix A — File Map
-
-| Path | Contents |
-|---|---|
-| `smali_classes8/com/winlator/cmod/MainActivity.smali` | Main activity, navigation dispatch |
-| `smali_classes8/com/winlator/cmod/ShortcutsFragment.smali` | Shortcut list, container picker |
-| `smali_classes8/com/winlator/cmod/ContainersFragment.smali` | Container list |
-| `smali_classes14/com/winlator/cmod/container/Container.smali` | Container data model |
-| `smali_classes14/com/winlator/cmod/container/ContainerManager.smali` | Container CRUD + shortcut loader |
-| `smali_classes14/com/winlator/cmod/container/Shortcut.smali` | Shortcut data model |
-| `smali_classes12/com/winlator/cmod/xenvironment/ImageFs.smali` | Linux rootfs (imagefs) |
-| `res/menu/main_menu.xml` | Navigation drawer items |
-| `res/layout/container_selection_dialog.xml` | Container picker dialog (reuse) |
-| `res/layout/download_progress_dialog.xml` | Download progress dialog (reuse) |
+### Build system
+The CI compiles the 28 Java extension files and injects them as `classes17.dex` into the APK. No Gradle, no build.gradle changes, no NDK — just `javac` + `d8`.
 
 ---
 
-## Appendix B — Signing
+## Appendix: File Map
 
-All patched APKs must be signed with v1/v2/v3 signatures. We use the standard AOSP testkey:
-- Private key: `testkey.pk8`
-- Certificate: `testkey.x509.pem`
-
-Same signing approach as BannerHub — apksigner with `--v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true`.
+| Path | DEX/Location | Description |
+|---|---|---|
+| `smali_classes8/com/winlator/cmod/MainActivity.smali` | classes8 | Nav dispatch — **1 patch** |
+| `smali_classes2/com/winlator/cmod/R$id.smali` | classes2 | Resource IDs — **1 patch** |
+| `smali_classes14/com/winlator/cmod/container/Container.smali` | classes14 | Container data model |
+| `smali_classes14/com/winlator/cmod/container/ContainerManager.smali` | classes14 | Container CRUD + shortcut loader |
+| `smali_classes14/com/winlator/cmod/container/Shortcut.smali` | classes14 | Shortcut model |
+| `smali_classes12/com/winlator/cmod/xenvironment/ImageFs.smali` | classes12 | Linux rootfs (Z: drive) |
+| `smali_classes8/com/winlator/cmod/ShortcutsFragment.smali` | classes8 | Shortcuts UI |
+| `res/menu/main_menu.xml` | res | Nav drawer menu — **1 patch** |
+| `res/values/public.xml` | res | Resource ID pins — **1 patch** |
+| `AndroidManifest.xml` | root | Activity registry — **1 patch** |
+| `extension/*.java` (28 files) | → classes17.dex | All store code |
 
 ---
 
-*Report version: 1.0 — 2026-04-11*  
+*Report version: 2.0 — 2026-04-11*  
+*Reference repos: Ludashi-plus (v2.9 Bionic) · REF4IK-Banner (v7.x Bionic)*  
 *Repo: https://github.com/The412Banner/star-test*
