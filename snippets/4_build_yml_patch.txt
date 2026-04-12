@@ -1,0 +1,38 @@
+# Patch for .github/workflows/build.yml
+# Add these two lines to the "Apply patches" step, AFTER the existing smali copy lines.
+# They copy the splash screen smali classes and the layout XML into the apktool output.
+#
+# Context: the "Apply patches" step typically contains lines like:
+#   cp -r patches/smali_classes8 apktool_out/
+#   ...etc...
+#
+# ADD THESE TWO LINES (order does not matter relative to each other):
+# -----------------------------------------------------------------------
+
+cp -r patches/smali_classes10 apktool_out/
+cp patches/res/layout/download_progress_dialog.xml apktool_out/res/layout/download_progress_dialog.xml
+
+# -----------------------------------------------------------------------
+# EXPLANATION:
+#
+# Line 1: copies the entire smali_classes10 directory into apktool_out/,
+#          replacing/adding all patched classes:
+#          - DownloadProgressDialog.smali         (patched: full-screen window, showPermissionsButton)
+#          - DownloadProgressDialog$ExternalSyntheticLambda0.smali  (patched: run→showPermissionsButton)
+#          - DownloadProgressDialog$ExternalSyntheticLambda2.smali  (NEW: closes dialog + doPermissionsFlow)
+#
+# Line 2: copies the new full-screen splash layout XML over the original
+#          download_progress_dialog.xml in the apktool output.
+#
+# NOTE: No changes to public.xml are required. All resource IDs are reused
+#       from the original layout:
+#         @id/CircularProgressIndicator = 0x7f090073  (now a ProgressBar, not CircularProgressIndicator)
+#         @id/TVProgress                = 0x7f090160
+#         @id/TextView                  = 0x7f09017c
+#         @id/LLBottomBar               = 0x7f090093
+#         @id/BTCancel                  = 0x7f09000d
+#
+# IMPORTANT: The smali cast in setProgress() uses Landroid/widget/ProgressBar;
+#            (not Lcom/google/android/material/progressindicator/CircularProgressIndicator;)
+#            because the layout now declares a standard ProgressBar widget.
+#            Mismatching the cast type causes a ClassCastException at runtime.
