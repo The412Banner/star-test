@@ -470,8 +470,11 @@ class SteamGamesActivity : Activity(), SteamRepository.SteamEventListener {
             exeFiles.sortWith { a, b ->
                 AmazonLaunchHelper.scoreExe(b, lowerTitle) - AmazonLaunchHelper.scoreExe(a, lowerTitle)
             }
+            // Download cover art for the shortcut icon (best-effort, non-blocking)
+            val iconPath = downloadSteamCoverArt(game.appId)
+
             if (exeFiles.size == 1) {
-                ui.post { LudashiLaunchBridge.addToLauncher(this, game.name, exeFiles[0].absolutePath) }
+                ui.post { LudashiLaunchBridge.addToLauncher(this, game.name, exeFiles[0].absolutePath, iconPath) }
                 return@Thread
             }
             // Multiple exes — let user pick
@@ -485,12 +488,47 @@ class SteamGamesActivity : Activity(), SteamRepository.SteamEventListener {
                 android.app.AlertDialog.Builder(this)
                     .setTitle("Select executable for \"${game.name}\"")
                     .setItems(labels) { _, which ->
-                        LudashiLaunchBridge.addToLauncher(this, game.name, candidates[which])
+                        LudashiLaunchBridge.addToLauncher(this, game.name, candidates[which], iconPath)
                     }
                     .setCancelable(true)
                     .show()
             }
         }.start()
+    }
+
+    /**
+     * Downloads the Steam header image for [appId] to a local cache directory.
+     * Tries 460x215 header first, falls back to 600x900 portrait art.
+     * Returns the local file path, or null if the download fails.
+     * Skips re-downloading if the file already exists.
+     */
+    private fun downloadSteamCoverArt(appId: Int): String? {
+        return try {
+            val dir = java.io.File(getExternalFilesDir(null), "steam_covers")
+            dir.mkdirs()
+            val dest = java.io.File(dir, "$appId.jpg")
+            if (dest.exists() && dest.length() > 0) return dest.absolutePath
+
+            val urls = listOf(
+                "https://shared.steamstatic.com/store_item_assets/steam/apps/$appId/header.jpg",
+                "https://shared.steamstatic.com/store_item_assets/steam/apps/$appId/library_600x900.jpg"
+            )
+            for (url in urls) {
+                try {
+                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 8_000
+                    conn.readTimeout = 15_000
+                    conn.connect()
+                    if (conn.responseCode == 200) {
+                        conn.inputStream.use { input ->
+                            java.io.FileOutputStream(dest).use { out -> input.copyTo(out) }
+                        }
+                        if (dest.length() > 0) return dest.absolutePath
+                    }
+                } catch (_: Exception) {}
+            }
+            null
+        } catch (_: Exception) { null }
     }
 
     private fun fmtSize(bytes: Long): String = when {

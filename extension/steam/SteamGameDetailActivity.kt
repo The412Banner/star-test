@@ -364,17 +364,54 @@ class SteamGameDetailActivity : Activity(), SteamRepository.SteamEventListener {
                 AmazonLaunchHelper.scoreExe(b, lowerTitle) - AmazonLaunchHelper.scoreExe(a, lowerTitle)
             }
 
+            // Download cover art for the shortcut icon (best-effort, non-blocking)
+            val iconPath = downloadSteamCoverArt(g.appId)
+
             if (exeFiles.size == 1) {
-                ui.post { LudashiLaunchBridge.addToLauncher(this, g.name, exeFiles[0].absolutePath) }
+                ui.post { LudashiLaunchBridge.addToLauncher(this, g.name, exeFiles[0].absolutePath, iconPath) }
                 return@Thread
             }
 
             // Multiple exes — show picker
             val candidates = exeFiles.map { it.absolutePath }
             showExePicker(candidates) { chosen ->
-                ui.post { LudashiLaunchBridge.addToLauncher(this, g.name, chosen) }
+                ui.post { LudashiLaunchBridge.addToLauncher(this, g.name, chosen, iconPath) }
             }
         }.start()
+    }
+
+    /**
+     * Downloads the Steam header image for [appId] to a local cache directory.
+     * Returns the local file path, or null if the download fails.
+     * Skips re-downloading if the file already exists.
+     */
+    private fun downloadSteamCoverArt(appId: Int): String? {
+        return try {
+            val dir = File(getExternalFilesDir(null), "steam_covers")
+            dir.mkdirs()
+            val dest = File(dir, "$appId.jpg")
+            if (dest.exists() && dest.length() > 0) return dest.absolutePath
+
+            val urls = listOf(
+                "https://shared.steamstatic.com/store_item_assets/steam/apps/$appId/header.jpg",
+                "https://shared.steamstatic.com/store_item_assets/steam/apps/$appId/library_600x900.jpg"
+            )
+            for (url in urls) {
+                try {
+                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 8_000
+                    conn.readTimeout = 15_000
+                    conn.connect()
+                    if (conn.responseCode == 200) {
+                        conn.inputStream.use { input ->
+                            java.io.FileOutputStream(dest).use { out -> input.copyTo(out) }
+                        }
+                        if (dest.length() > 0) return dest.absolutePath
+                    }
+                } catch (_: Exception) {}
+            }
+            null
+        } catch (_: Exception) { null }
     }
 
     private fun showDownloadSpeedPicker() {

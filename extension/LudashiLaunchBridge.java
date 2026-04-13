@@ -32,6 +32,15 @@ public final class LudashiLaunchBridge {
      * into the chosen container's Wine desktop directory.
      */
     public static void addToLauncher(Activity activity, String gameName, String exePath) {
+        addToLauncher(activity, gameName, exePath, null);
+    }
+
+    /**
+     * Same as addToLauncher(activity, gameName, exePath) but with a local icon file path.
+     * Pass a fully qualified path to a JPG/PNG that Winlator should use as the shortcut thumbnail.
+     * Pass null to leave the icon blank (same as the no-icon overload).
+     */
+    public static void addToLauncher(Activity activity, String gameName, String exePath, String iconPath) {
         new Thread(() -> {
             Handler h = new Handler(Looper.getMainLooper());
             try {
@@ -61,7 +70,7 @@ public final class LudashiLaunchBridge {
                 h.post(() -> new AlertDialog.Builder(activity)
                         .setTitle("Select container for \"" + gameName + "\"")
                         .setItems(names, (dialog, which) ->
-                                writeShortcut(activity, containers.get(which), gameName, exePath, h))
+                                writeShortcut(activity, containers.get(which), gameName, exePath, iconPath, h))
                         .setNegativeButton("Cancel", null)
                         .show());
 
@@ -74,7 +83,7 @@ public final class LudashiLaunchBridge {
     }
 
     private static void writeShortcut(Activity activity, Object container,
-                                      String gameName, String exePath, Handler h) {
+                                      String gameName, String exePath, String iconPath, Handler h) {
         new Thread(() -> {
             try {
                 Method getDesktopDir = container.getClass().getMethod("getDesktopDir");
@@ -105,10 +114,14 @@ public final class LudashiLaunchBridge {
                 String winPath = GogInstallPath.toWinePath(activity, exePath);
                 String escapedWinPath = winPath.replace("\\", "\\\\\\\\");
 
+                String iconLine = (iconPath != null && !iconPath.isEmpty())
+                        ? "Icon=" + iconPath + "\n"
+                        : "Icon=\n";
+
                 String content = "[Desktop Entry]\n"
                         + "Name=" + gameName + "\n"
                         + "Exec=wine " + escapedWinPath + "\n"
-                        + "Icon=\n"
+                        + iconLine
                         + "Type=Application\n"
                         + "StartupWMClass=explorer\n"
                         + "\n"
