@@ -477,16 +477,59 @@ jobs:
 
       - name: Create release and upload APK
         run: |
-          if gh release view "${{ github.ref_name }}" &>/dev/null; then
-            gh release upload "${{ github.ref_name }}" "${{ env.APK_NAME }}" --clobber
-            gh release edit "${{ github.ref_name }}" --draft=false --prerelease
-            echo "Uploaded to existing release ${{ github.ref_name }}"
+          TAG="${{ github.ref_name }}"
+          APK="${{ env.APK_NAME }}"
+
+          # Build release notes from commits since the previous tag
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges | head -20)
           else
-            gh release create "${{ github.ref_name }}" \
-              "${{ env.APK_NAME }}" \
-              --title "Star Bionic ${{ github.ref_name }}" \
-              --prerelease \
-              --notes "Pre-release build: GOG + Epic + Amazon + Steam store integration for Star Bionic V1.0"
+            CHANGES=$(git log --pretty=format:"- %s" --no-merges -10)
           fi
+          NOTES="$(printf '## Changes\n%s\n\n---\n*Star Bionic — GOG + Epic + Amazon + Steam store integration*' "$CHANGES")"
+
+          if gh release view "$TAG" &>/dev/null; then
+            gh release upload "$TAG" "$APK" --clobber
+            gh release edit "$TAG" --draft=false --prerelease --notes "$NOTES"
+            echo "Updated existing release $TAG"
+          else
+            gh release create "$TAG" "$APK" \
+              --title "Star Bionic $TAG" \
+              --prerelease \
+              --notes "$NOTES"
+            echo "Created new release $TAG"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prune old pre-releases (keep newest 3, never touch stable)
+        run: |
+          # List all pre-releases sorted newest first, skip stable releases entirely
+          PRERELEASES=$(gh release list --limit 50 --json tagName,isPrerelease,createdAt \
+            --jq '.[] | select(.isPrerelease == true) | .tagName' | head -50)
+
+          echo "All pre-releases found:"
+          echo "$PRERELEASES"
+
+          # Keep the newest 3, delete the rest
+          TO_DELETE=$(echo "$PRERELEASES" | tail -n +4)
+
+          if [ -z "$TO_DELETE" ]; then
+            echo "3 or fewer pre-releases — nothing to prune"
+          else
+            echo "Deleting old pre-releases:"
+            echo "$TO_DELETE"
+            echo "$TO_DELETE" | while read -r old_tag; do
+              [ -z "$old_tag" ] && continue
+              gh release delete "$old_tag" --yes --cleanup-tag && \
+                echo "Deleted: $old_tag" || \
+                echo "Warning: could not delete $old_tag (may already be gone)"
+            done
+          fi
+
+          echo "Pre-releases after pruning:"
+          gh release list --limit 10 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease == true) | .tagName'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
