@@ -167,18 +167,19 @@ public final class StarBionicLaunchBridge {
                 String winPath = GogInstallPath.toWinePath(activity, exePath);
                 String escapedWinPath = winPath.replace("\\", "\\\\\\\\");
 
-                String iconLine = (iconPath != null && !iconPath.isEmpty())
-                        ? "Icon=" + iconPath + "\n"
-                        : "Icon=\n";
+                String coverArtLine = (iconPath != null && !iconPath.isEmpty())
+                        ? "customCoverArtPath=" + iconPath + "\n"
+                        : "";
 
                 String content = "[Desktop Entry]\n"
                         + "Name=" + gameName + "\n"
                         + "Exec=wine " + escapedWinPath + "\n"
-                        + iconLine
+                        + "Icon=\n"
                         + "Type=Application\n"
                         + "StartupWMClass=explorer\n"
                         + "\n"
-                        + "[Extra Data]\n";
+                        + "[Extra Data]\n"
+                        + coverArtLine;
 
                 try (FileWriter fw = new FileWriter(shortcutFile)) {
                     fw.write(content);
