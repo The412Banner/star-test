@@ -13,19 +13,19 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 /**
- * Launch bridge for Ludashi-plus store integrations.
+ * Launch bridge for Star Bionic store integrations.
  *
  * Uses reflection to access ContainerManager so this class compiles against
- * android.jar alone — no Ludashi stubs needed.
+ * android.jar alone — no Star Bionic stubs needed.
  *
  * Call addToLauncher() when a store game is ready to add. It shows a dialog
  * listing all Wine containers, then writes a .desktop shortcut file into the
  * selected container's desktop directory. The shortcut then appears in
- * Ludashi's Shortcuts list where the user can launch and configure it.
+ * Star Bionic's Shortcuts list where the user can launch and configure it.
  */
-public final class LudashiLaunchBridge {
+public final class StarBionicLaunchBridge {
 
-    private LudashiLaunchBridge() {}
+    private StarBionicLaunchBridge() {}
 
     /**
      * Show a container picker dialog, then write a .desktop shortcut file

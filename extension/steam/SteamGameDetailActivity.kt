@@ -368,14 +368,14 @@ class SteamGameDetailActivity : Activity(), SteamRepository.SteamEventListener {
             val iconPath = downloadSteamCoverArt(g.appId)
 
             if (exeFiles.size == 1) {
-                ui.post { LudashiLaunchBridge.addToLauncher(this, g.name, exeFiles[0].absolutePath, iconPath) }
+                ui.post { StarBionicLaunchBridge.addToLauncher(this, g.name, exeFiles[0].absolutePath, iconPath) }
                 return@Thread
             }
 
             // Multiple exes — show picker
             val candidates = exeFiles.map { it.absolutePath }
             showExePicker(candidates) { chosen ->
-                ui.post { LudashiLaunchBridge.addToLauncher(this, g.name, chosen, iconPath) }
+                ui.post { StarBionicLaunchBridge.addToLauncher(this, g.name, chosen, iconPath) }
             }
         }.start()
     }

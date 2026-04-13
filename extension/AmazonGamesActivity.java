@@ -1108,7 +1108,7 @@ public class AmazonGamesActivity extends Activity {
     // ── Launch ────────────────────────────────────────────────────────────────
 
     private void pendingLaunchExe(String gameName, String absPath) {
-        LudashiLaunchBridge.addToLauncher(this, gameName, absPath);
+        StarBionicLaunchBridge.addToLauncher(this, gameName, absPath);
     }
 
     // ── Cache ─────────────────────────────────────────────────────────────────

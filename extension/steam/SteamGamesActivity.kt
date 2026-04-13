@@ -448,7 +448,7 @@ class SteamGamesActivity : Activity(), SteamRepository.SteamEventListener {
     }
 
     // -------------------------------------------------------------------------
-    // Launch helper — choose exe then pick container via LudashiLaunchBridge
+    // Launch helper — choose exe then pick container via StarBionicLaunchBridge
     // -------------------------------------------------------------------------
 
     private fun launchInstalledGame(game: SteamGame) {
@@ -474,7 +474,7 @@ class SteamGamesActivity : Activity(), SteamRepository.SteamEventListener {
             val iconPath = downloadSteamCoverArt(game.appId)
 
             if (exeFiles.size == 1) {
-                ui.post { LudashiLaunchBridge.addToLauncher(this, game.name, exeFiles[0].absolutePath, iconPath) }
+                ui.post { StarBionicLaunchBridge.addToLauncher(this, game.name, exeFiles[0].absolutePath, iconPath) }
                 return@Thread
             }
             // Multiple exes — let user pick
@@ -488,7 +488,7 @@ class SteamGamesActivity : Activity(), SteamRepository.SteamEventListener {
                 android.app.AlertDialog.Builder(this)
                     .setTitle("Select executable for \"${game.name}\"")
                     .setItems(labels) { _, which ->
-                        LudashiLaunchBridge.addToLauncher(this, game.name, candidates[which], iconPath)
+                        StarBionicLaunchBridge.addToLauncher(this, game.name, candidates[which], iconPath)
                     }
                     .setCancelable(true)
                     .show()
