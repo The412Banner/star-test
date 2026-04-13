@@ -520,7 +520,7 @@ public class AmazonGamesActivity extends Activity {
             }
             if ("Add to Launcher".equals(lbl) || "Add Game".equals(lbl)) {
                 String exe = prefs.getString("amazon_exe_" + game.productId, null);
-                if (exe != null) pendingLaunchExe(game.title, exe);
+                if (exe != null) pendingLaunchExe(game.title, exe, game.artUrl);
                 return;
             }
 
@@ -746,7 +746,7 @@ public class AmazonGamesActivity extends Activity {
             }
             if ("Add to Launcher".equals(lbl) || "Add Game".equals(lbl)) {
                 String exe = prefs.getString("amazon_exe_" + game.productId, null);
-                if (exe != null) pendingLaunchExe(game.title, exe);
+                if (exe != null) pendingLaunchExe(game.title, exe, game.artUrl);
                 return;
             }
             showInstallConfirm(game, () -> {
@@ -1107,8 +1107,8 @@ public class AmazonGamesActivity extends Activity {
 
     // ── Launch ────────────────────────────────────────────────────────────────
 
-    private void pendingLaunchExe(String gameName, String absPath) {
-        StarBionicLaunchBridge.addToLauncher(this, gameName, absPath);
+    private void pendingLaunchExe(String gameName, String absPath, String artUrl) {
+        StarBionicLaunchBridge.addToLauncherWithArt(this, gameName, absPath, artUrl);
     }
 
     // ── Cache ─────────────────────────────────────────────────────────────────

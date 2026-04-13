@@ -8,8 +8,12 @@ import android.os.Looper;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.List;
 
 /**
@@ -29,57 +33,106 @@ public final class StarBionicLaunchBridge {
 
     /**
      * Show a container picker dialog, then write a .desktop shortcut file
-     * into the chosen container's Wine desktop directory.
+     * into the chosen container's Wine desktop directory. No cover art.
      */
     public static void addToLauncher(Activity activity, String gameName, String exePath) {
-        addToLauncher(activity, gameName, exePath, null);
+        new Thread(() -> showPicker(activity, gameName, exePath, null,
+                new Handler(Looper.getMainLooper()))).start();
     }
 
     /**
-     * Same as addToLauncher(activity, gameName, exePath) but with a local icon file path.
-     * Pass a fully qualified path to a JPG/PNG that Winlator should use as the shortcut thumbnail.
-     * Pass null to leave the icon blank (same as the no-icon overload).
+     * Same as addToLauncher(activity, gameName, exePath) but with a pre-downloaded
+     * local icon file path. Pass null to leave the icon blank.
      */
     public static void addToLauncher(Activity activity, String gameName, String exePath, String iconPath) {
+        new Thread(() -> showPicker(activity, gameName, exePath, iconPath,
+                new Handler(Looper.getMainLooper()))).start();
+    }
+
+    /**
+     * Downloads coverUrl to a local cache file, then shows the container picker.
+     * Use this when you have a remote art URL (GOG, Epic, Amazon, Steam CDN).
+     * Falls back gracefully — shortcut is still created if the download fails.
+     */
+    public static void addToLauncherWithArt(Activity activity, String gameName,
+                                             String exePath, String coverUrl) {
         new Thread(() -> {
-            Handler h = new Handler(Looper.getMainLooper());
-            try {
-                Class<?> cmClass = Class.forName("com.winlator.cmod.container.ContainerManager");
-                Object manager = cmClass.getConstructor(Context.class).newInstance(activity);
-                Method getContainers = cmClass.getMethod("getContainers");
-                List<?> containers = (List<?>) getContainers.invoke(manager);
-
-                if (containers == null || containers.isEmpty()) {
-                    h.post(() -> Toast.makeText(activity,
-                            "No Wine container found. Create one first.",
-                            Toast.LENGTH_LONG).show());
-                    return;
-                }
-
-                // Build display names for the picker
-                String[] names = new String[containers.size()];
-                for (int i = 0; i < containers.size(); i++) {
-                    Object c = containers.get(i);
-                    try {
-                        Method getName = c.getClass().getMethod("getName");
-                        names[i] = (String) getName.invoke(c);
-                    } catch (Exception ignored) {}
-                    if (names[i] == null || names[i].isEmpty()) names[i] = "Container " + i;
-                }
-
-                h.post(() -> new AlertDialog.Builder(activity)
-                        .setTitle("Select container for \"" + gameName + "\"")
-                        .setItems(names, (dialog, which) ->
-                                writeShortcut(activity, containers.get(which), gameName, exePath, iconPath, h))
-                        .setNegativeButton("Cancel", null)
-                        .show());
-
-            } catch (Exception e) {
-                h.post(() -> Toast.makeText(activity,
-                        "Error loading containers: " + e.getMessage(),
-                        Toast.LENGTH_LONG).show());
-            }
+            String iconPath = downloadCoverArt(activity, coverUrl, gameName);
+            showPicker(activity, gameName, exePath, iconPath, new Handler(Looper.getMainLooper()));
         }).start();
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    private static void showPicker(Activity activity, String gameName, String exePath,
+                                   String iconPath, Handler h) {
+        try {
+            Class<?> cmClass = Class.forName("com.winlator.cmod.container.ContainerManager");
+            Object manager = cmClass.getConstructor(Context.class).newInstance(activity);
+            Method getContainers = cmClass.getMethod("getContainers");
+            List<?> containers = (List<?>) getContainers.invoke(manager);
+
+            if (containers == null || containers.isEmpty()) {
+                h.post(() -> Toast.makeText(activity,
+                        "No Wine container found. Create one first.",
+                        Toast.LENGTH_LONG).show());
+                return;
+            }
+
+            // Build display names for the picker
+            String[] names = new String[containers.size()];
+            for (int i = 0; i < containers.size(); i++) {
+                Object c = containers.get(i);
+                try {
+                    Method getName = c.getClass().getMethod("getName");
+                    names[i] = (String) getName.invoke(c);
+                } catch (Exception ignored) {}
+                if (names[i] == null || names[i].isEmpty()) names[i] = "Container " + i;
+            }
+
+            h.post(() -> new AlertDialog.Builder(activity)
+                    .setTitle("Select container for \"" + gameName + "\"")
+                    .setItems(names, (dialog, which) ->
+                            writeShortcut(activity, containers.get(which), gameName, exePath, iconPath, h))
+                    .setNegativeButton("Cancel", null)
+                    .show());
+
+        } catch (Exception e) {
+            h.post(() -> Toast.makeText(activity,
+                    "Error loading containers: " + e.getMessage(),
+                    Toast.LENGTH_LONG).show());
+        }
+    }
+
+    /**
+     * Downloads a cover art image from url and saves it to
+     * getExternalFilesDir/store_covers/{sanitized gameName}.jpg.
+     * Returns the local file path, or null on failure. Skips re-download if cached.
+     */
+    private static String downloadCoverArt(Context ctx, String url, String gameName) {
+        if (url == null || url.isEmpty()) return null;
+        try {
+            File dir = new File(ctx.getExternalFilesDir(null), "store_covers");
+            dir.mkdirs();
+            String safeName = gameName.replaceAll("[^a-zA-Z0-9]", "_");
+            File dest = new File(dir, safeName + ".jpg");
+            if (dest.exists() && dest.length() > 0) return dest.getAbsolutePath();
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(8_000);
+            conn.setReadTimeout(15_000);
+            conn.connect();
+            if (conn.getResponseCode() == 200) {
+                try (InputStream in = conn.getInputStream();
+                     FileOutputStream out = new FileOutputStream(dest)) {
+                    byte[] buf = new byte[8192]; int n;
+                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                }
+                if (dest.length() > 0) return dest.getAbsolutePath();
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private static void writeShortcut(Activity activity, Object container,

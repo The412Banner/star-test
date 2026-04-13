@@ -516,7 +516,8 @@ public class EpicGamesActivity extends Activity {
             }
             if ("Add to Launcher".equals(lbl) || "Add Game".equals(lbl)) {
                 String exe = prefs.getString("epic_exe_" + game.appName, null);
-                if (exe != null) pendingLaunchExe(game.title, exe);
+                String epicArt = (game.artCover != null && !game.artCover.isEmpty()) ? game.artCover : game.artSquare;
+                if (exe != null) pendingLaunchExe(game.title, exe, epicArt);
                 return;
             }
             showInstallConfirm(game, () -> {
@@ -739,7 +740,8 @@ public class EpicGamesActivity extends Activity {
             }
             if ("Add to Launcher".equals(lbl) || "Add Game".equals(lbl)) {
                 String exe = prefs.getString("epic_exe_" + game.appName, null);
-                if (exe != null) pendingLaunchExe(game.title, exe);
+                String epicArt = (game.artCover != null && !game.artCover.isEmpty()) ? game.artCover : game.artSquare;
+                if (exe != null) pendingLaunchExe(game.title, exe, epicArt);
                 return;
             }
             showInstallConfirm(game, () -> {
@@ -1100,8 +1102,8 @@ public class EpicGamesActivity extends Activity {
 
     // ── Launch ────────────────────────────────────────────────────────────────
 
-    private void pendingLaunchExe(String gameName, String absPath) {
-        StarBionicLaunchBridge.addToLauncher(this, gameName, absPath);
+    private void pendingLaunchExe(String gameName, String absPath, String artUrl) {
+        StarBionicLaunchBridge.addToLauncherWithArt(this, gameName, absPath, artUrl);
     }
 
     // ── Cache ─────────────────────────────────────────────────────────────────
