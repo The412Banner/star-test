@@ -1,5 +1,6 @@
 package com.winlator.cmod.store;
 
+import android.app.Activity;
 import android.content.Context;
 
 import java.io.File;
@@ -16,5 +17,14 @@ public final class GogInstallPath {
      */
     public static File getInstallDir(Context ctx, String dirName) {
         return new File(new File(ctx.getFilesDir(), "gog_games"), dirName);
+    }
+
+    /**
+     * Converts an Android absolute path to a Wine Windows path.
+     * Wine mounts the Android filesystem at Z:, so
+     * /data/user/0/.../game.exe → Z:\data\user\0\...\game.exe
+     */
+    public static String toWinePath(Activity activity, String androidPath) {
+        return "Z:" + androidPath.replace('/', '\\');
     }
 }
